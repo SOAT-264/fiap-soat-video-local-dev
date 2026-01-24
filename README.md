@@ -188,6 +188,72 @@ curl http://localhost:8000/videos \
 
 ---
 
+## 🔧 LocalStack - Simulando AWS Localmente
+
+O LocalStack simula os serviços AWS localmente. Já está configurado no `docker-compose.infra.yml`.
+
+### Serviços Disponíveis
+
+| Serviço AWS | Porta Local | Uso |
+|-------------|-------------|-----|
+| S3 | 4566 | Armazenamento de vídeos e frames |
+| SQS | 4566 | Fila de processamento de jobs |
+| SNS | 4566 | Notificações de eventos |
+| SES | 4566 | Envio de emails |
+
+### Configuração
+
+Configure as variáveis de ambiente para usar LocalStack:
+
+```bash
+export AWS_ENDPOINT_URL=http://localhost:4566
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_REGION=us-east-1
+```
+
+### Recursos Criados Automaticamente
+
+O script `init-scripts/localstack-init.sh` cria:
+
+- **S3 Buckets**: `video-uploads`, `video-outputs`
+- **SQS Queues**: `job-queue`, `notification-queue` (com DLQs)
+- **SNS Topics**: `video-events`, `job-events`
+- **SES**: Email verificado `noreply@videoprocessor.local`
+
+### Usando AWS CLI com LocalStack
+
+```bash
+# Listar buckets
+aws --endpoint-url=http://localhost:4566 s3 ls
+
+# Ver filas SQS
+aws --endpoint-url=http://localhost:4566 sqs list-queues
+
+# Ver tópicos SNS
+aws --endpoint-url=http://localhost:4566 sns list-topics
+```
+
+### Usando a Shared Library
+
+```python
+from video_processor_shared.aws import get_s3_client
+from video_processor_shared.aws.s3_storage import S3StorageService
+from video_processor_shared.aws.sqs_service import SQSService
+
+# Cria clientes que automaticamente usam LocalStack se AWS_ENDPOINT_URL estiver setada
+s3 = S3StorageService()
+sqs = SQSService()
+
+# Upload de vídeo
+await s3.upload_video(file, "video.mp4", "user-123")
+
+# Enviar mensagem para fila
+await sqs.send_message({"job_id": "123", "video_key": "videos/user-123/..."})
+```
+
+---
+
 ## 🐛 Troubleshooting
 
 ### Erro: "Cannot connect to Docker daemon"
