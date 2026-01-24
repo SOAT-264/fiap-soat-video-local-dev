@@ -1,0 +1,331 @@
+version: '3.8'
+
+# Full local development environment with all services
+# Run with: docker-compose up -d
+
+services:
+  # ==================== INFRASTRUCTURE ====================
+
+  # Auth Service Database
+  postgres-auth:
+    image: postgres:16-alpine
+    container_name: vp-postgres-auth
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+      - ./init-scripts/init-auth-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+  # Video Service Database
+  postgres-video:
+    image: postgres:16-alpine
+    container_name: vp-postgres-video
+    environment:
+      POSTGRES_DB: video_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-video-data:/var/lib/postgresql/data
+      - ./init-scripts/init-video-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d video_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+  # Job Service Database
+  postgres-job:
+    image: postgres:16-alpine
+    container_name: vp-postgres-job
+    environment:
+      POSTGRES_DB: job_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-job-data:/var/lib/postgresql/data
+      - ./init-scripts/init-job-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d job_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+  # Notification Service Database
+  postgres-notification:
+    image: postgres:16-alpine
+    container_name: vp-postgres-notification
+    environment:
+      POSTGRES_DB: notification_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres-notification-data:/var/lib/postgresql/data
+      - ./init-scripts/init-notification-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d notification_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+  # Shared Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: vp-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+  # LocalStack for AWS Services
+  localstack:
+    image: localstack/localstack:latest
+    container_name: vp-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,sqs,sns,ses
+      - DEBUG=0
+      - DATA_DIR=/var/lib/localstack/data
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./init-scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+  # ==================== MICROSERVICES ====================
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ../fiap-soat-video-auth
+      dockerfile: Dockerfile
+    container_name: vp-auth-service
+    ports:
+      - "8001:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres-auth:5432/auth_db
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=dev-jwt-secret-key-change-in-production
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRY_HOURS=24
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - video-processor-network
+
+  # Video Service
+  video-service:
+    build:
+      context: ../fiap-soat-video-service
+      dockerfile: Dockerfile
+    container_name: vp-video-service
+    ports:
+      - "8002:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres-video:5432/video_db
+      - REDIS_URL=redis://redis:6379/1
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - S3_BUCKET=video-uploads
+      - SNS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:video-events
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      postgres-video:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - video-processor-network
+
+  # Job API Service
+  job-api-service:
+    build:
+      context: ../fiap-soat-video-jobs
+      dockerfile: Dockerfile.api
+    container_name: vp-job-api-service
+    ports:
+      - "8003:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres-job:5432/job_db
+      - REDIS_URL=redis://redis:6379/2
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/job-queue
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - VIDEO_SERVICE_URL=http://video-service:8000
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      postgres-job:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - video-processor-network
+
+  # Job Worker (with FFmpeg)
+  job-worker:
+    build:
+      context: ../fiap-soat-video-jobs
+      dockerfile: Dockerfile.worker
+    container_name: vp-job-worker
+    deploy:
+      replicas: 2
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres-job:5432/job_db
+      - REDIS_URL=redis://redis:6379/2
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - S3_BUCKET=video-uploads
+      - S3_OUTPUT_BUCKET=video-outputs
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/job-queue
+      - SNS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:job-events
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      postgres-job:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    networks:
+      - video-processor-network
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ../fiap-soat-video-notifications
+      dockerfile: Dockerfile
+    container_name: vp-notification-service
+    ports:
+      - "8004:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres-notification:5432/notification_db
+      - REDIS_URL=redis://redis:6379/3
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/notification-queue
+      - SES_SENDER_EMAIL=noreply@videoprocessor.local
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      postgres-notification:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - video-processor-network
+
+  # ==================== API GATEWAY ====================
+
+  # Nginx API Gateway
+  nginx-gateway:
+    image: nginx:alpine
+    container_name: vp-nginx-gateway
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - video-service
+      - job-api-service
+      - notification-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - video-processor-network
+
+volumes:
+  postgres-auth-data:
+  postgres-video-data:
+  postgres-job-data:
+  postgres-notification-data:
+  redis-data:
+  localstack-data:
+
+networks:
+  video-processor-network:
+    driver: bridge

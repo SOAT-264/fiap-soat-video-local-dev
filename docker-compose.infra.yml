@@ -1,0 +1,142 @@
+version: '3.8'
+
+# Infrastructure-only compose file for local development
+# Run with: docker-compose -f docker-compose.infra.yml up -d
+
+services:
+  # Auth Service Database
+  postgres-auth:
+    image: postgres:16-alpine
+    container_name: vp-postgres-auth
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+      - ./init-scripts/init-auth-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+  # Video Service Database
+  postgres-video:
+    image: postgres:16-alpine
+    container_name: vp-postgres-video
+    environment:
+      POSTGRES_DB: video_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-video-data:/var/lib/postgresql/data
+      - ./init-scripts/init-video-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d video_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+  # Job Service Database
+  postgres-job:
+    image: postgres:16-alpine
+    container_name: vp-postgres-job
+    environment:
+      POSTGRES_DB: job_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-job-data:/var/lib/postgresql/data
+      - ./init-scripts/init-job-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d job_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+  # Notification Service Database
+  postgres-notification:
+    image: postgres:16-alpine
+    container_name: vp-postgres-notification
+    environment:
+      POSTGRES_DB: notification_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres-notification-data:/var/lib/postgresql/data
+      - ./init-scripts/init-notification-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d notification_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+  # Shared Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: vp-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+  # LocalStack for AWS Services (S3, SQS, SNS, SES)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: vp-localstack
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      - SERVICES=s3,sqs,sns,ses
+      - DEBUG=0
+      - DATA_DIR=/var/lib/localstack/data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./init-scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - video-processor-network
+
+volumes:
+  postgres-auth-data:
+  postgres-video-data:
+  postgres-job-data:
+  postgres-notification-data:
+  redis-data:
+  localstack-data:
+
+networks:
+  video-processor-network:
+    driver: bridge
