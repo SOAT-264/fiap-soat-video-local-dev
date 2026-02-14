@@ -1,6 +1,6 @@
 # 🎬 Video Processor - Ambiente de Desenvolvimento Local
 
-Este repositório contém todo o necessário para rodar a arquitetura completa de microserviços do Video Processor localmente.
+Este repositório contém tudo para rodar localmente a arquitetura de microserviços do Video Processor (auth, upload, jobs e notificacoes), incluindo a infraestrutura simulada via LocalStack.
 
 ## 📐 Arquitetura
 
@@ -20,7 +20,7 @@ Este repositório contém todo o necessário para rodar a arquitetura completa d
 | [fiap-soat-video-auth](https://github.com/morgadope/fiap-soat-video-auth) | Serviço de autenticação (JWT, registro, login) | 8001 |
 | [fiap-soat-video-service](https://github.com/morgadope/fiap-soat-video-service) | Serviço de upload e gestão de vídeos | 8002 |
 | [fiap-soat-video-jobs](https://github.com/morgadope/fiap-soat-video-jobs) | Serviço de processamento de jobs (FFmpeg) | 8003 |
-| [fiap-soat-video-notifications](https://github.com/morgadope/fiap-soat-video-notifications) | Serviço de notificações por email (SMTP) | 8004 |
+| [fiap-soat-video-notifications](https://github.com/morgadope/fiap-soat-video-notifications) | Serviço de notificações por email (SES local) | 8004 |
 | [fiap-soat-video-infra](https://github.com/morgadope/fiap-soat-video-infra) | Infraestrutura Terraform para AWS | - |
 | [fiap-soat-video-local-dev](https://github.com/morgadope/fiap-soat-video-local-dev) | Este repositório - ambiente local | - |
 
@@ -51,7 +51,7 @@ cp .env.example .env
 ### 3. Inicie a infraestrutura
 
 ```bash
-# Subir apenas infraestrutura (PostgreSQL, Redis, RabbitMQ, MinIO)
+# Subir apenas infraestrutura (PostgreSQL, Redis, LocalStack)
 docker-compose -f docker-compose.infra.yml up -d
 
 # Verificar se está saudável
@@ -61,23 +61,33 @@ docker-compose -f docker-compose.infra.yml ps
 ### 4. Inicie todos os serviços
 
 ```bash
-# Subir tudo (infraestrutura + microserviços)
-docker-compose up -d
+# Subir tudo (infraestrutura + microserviços + workers)
+docker-compose up -d --build
 
 # Ver logs
 docker-compose logs -f
 ```
 
-### 5. Acesse os serviços
+### 5. Inicialize recursos AWS locais
+
+```bash
+# Windows
+./init-scripts/localstack-init.ps1
+
+# Linux/Mac
+./init-scripts/localstack-init.sh
+```
+
+### 6. Acesse os serviços
 
 | Serviço | URL | Credenciais |
 |---------|-----|-------------|
 | API Docs (Swagger) | http://localhost:8000/docs | - |
-| RabbitMQ Management | http://localhost:15672 | admin / admin123 |
-| MinIO Console | http://localhost:9001 | minioadmin / minioadmin123 |
-| Flower (Celery) | http://localhost:5555 | - |
-| Grafana | http://localhost:3000 | admin / admin123 |
-| Prometheus | http://localhost:9090 | - |
+| Auth Service | http://localhost:8001/docs | - |
+| Video Service | http://localhost:8002/docs | - |
+| Job API Service | http://localhost:8003/docs | - |
+| Notification Service | http://localhost:8004/docs | - |
+| LocalStack | http://localhost:4566 | - |
 
 ---
 
@@ -85,7 +95,7 @@ docker-compose logs -f
 
 ```
 fiap-soat-video-local-dev/
-├── docker-compose.yml           # Orquestra TODOS os serviços
+├── docker-compose.yml           # Orquestra TODOS os serviços + workers
 ├── docker-compose.infra.yml     # Apenas infraestrutura
 ├── .env.example                  # Variáveis de ambiente
 ├── init-scripts/                 # Scripts de inicialização do banco
@@ -114,10 +124,11 @@ docker-compose up -d
 docker-compose down
 
 # Ver logs de um serviço específico
-docker-compose logs -f api
+docker-compose logs -f job-worker
+docker-compose logs -f notification-worker
 
 # Reiniciar um serviço
-docker-compose restart worker
+docker-compose restart job-worker
 
 # Ver status
 docker-compose ps
@@ -129,8 +140,8 @@ docker-compose down -v
 ### Banco de Dados
 
 ```bash
-# Acessar PostgreSQL
-docker exec -it video_processor_db psql -U postgres -d video_processor
+# Acessar PostgreSQL do job-service
+docker exec -it vp-postgres-job psql -U postgres -d job_db
 
 # Ver tabelas
 \dt
@@ -143,7 +154,7 @@ docker exec -it video_processor_db psql -U postgres -d video_processor
 
 ```bash
 # Acessar Redis CLI
-docker exec -it video_processor_redis redis-cli
+docker exec -it vp-redis redis-cli
 
 # Ver todas as chaves
 KEYS *
@@ -178,7 +189,16 @@ curl -X POST http://localhost:8000/auth/login \
   -d '{"email":"user@test.com","password":"Test1234!"}'
 ```
 
-### 4. Listar Vídeos (com token)
+### 4. Upload de vídeo (com token)
+
+```bash
+TOKEN="seu_token_aqui"
+curl -X POST http://localhost:8000/videos/upload \
+   -H "Authorization: Bearer $TOKEN" \
+   -F "file=@meu_video.mp4"
+```
+
+### 5. Listar Vídeos (com token)
 
 ```bash
 TOKEN="seu_token_aqui"
@@ -234,7 +254,20 @@ aws --endpoint-url=http://localhost:4566 sqs list-queues
 aws --endpoint-url=http://localhost:4566 sns list-topics
 ```
 
-### Usando a Shared Library
+## 🔄 Fluxo de Funcionamento
+
+1. Usuario registra e faz login no Auth Service (JWT).
+2. Upload no Video Service grava metadados e publica evento `video-events`.
+3. Job Worker consome o evento, cria o job e processa o video (FFmpeg, 1 fps).
+4. Frames sao zipados e enviados ao bucket de output.
+5. Job Worker publica evento `job-events`.
+6. Notification Worker consome o evento e registra notificacao no banco.
+
+## 📥 Download do ZIP
+
+O Job API retorna `download_url` com link pronto (presigned) no endpoint `/jobs`.
+
+## 📦 Usando a Shared Library
 
 ```python
 from video_processor_shared.aws import get_s3_client
