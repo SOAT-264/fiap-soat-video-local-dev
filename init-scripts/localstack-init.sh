@@ -41,6 +41,58 @@ awslocal sns subscribe \
     --protocol sqs \
     --notification-endpoint $NOTIFICATION_QUEUE_ARN
 
+# Allow SNS to publish to SQS queues
+echo "Applying SQS queue policies for SNS delivery..."
+JOB_QUEUE_POLICY=$(cat <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowVideoEventsTopic",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "sqs:SendMessage",
+            "Resource": "$JOB_QUEUE_ARN",
+            "Condition": {
+                "ArnEquals": {
+                    "aws:SourceArn": "arn:aws:sns:us-east-1:000000000000:video-events"
+                }
+            }
+        }
+    ]
+}
+EOF
+)
+
+NOTIFICATION_QUEUE_POLICY=$(cat <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowJobEventsTopic",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "sqs:SendMessage",
+            "Resource": "$NOTIFICATION_QUEUE_ARN",
+            "Condition": {
+                "ArnEquals": {
+                    "aws:SourceArn": "arn:aws:sns:us-east-1:000000000000:job-events"
+                }
+            }
+        }
+    ]
+}
+EOF
+)
+
+awslocal sqs set-queue-attributes \
+        --queue-url http://localhost:4566/000000000000/job-queue \
+        --attributes Policy="$JOB_QUEUE_POLICY"
+
+awslocal sqs set-queue-attributes \
+        --queue-url http://localhost:4566/000000000000/notification-queue \
+        --attributes Policy="$NOTIFICATION_QUEUE_POLICY"
+
 # Verify SES email identity (for local testing)
 echo "Verifying SES email identity..."
 awslocal ses verify-email-identity --email-address noreply@videoprocessor.local

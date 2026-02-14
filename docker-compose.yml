@@ -134,13 +134,13 @@ services:
   # Auth Service
   auth-service:
     build:
-      context: ../fiap-soat-video-auth
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: fiap-soat-video-auth/Dockerfile
     container_name: vp-auth-service
     ports:
       - "8001:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres123@postgres-auth:5432/auth_db
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-auth:5432/auth_db
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=dev-jwt-secret-key-change-in-production
       - JWT_ALGORITHM=HS256
@@ -162,13 +162,13 @@ services:
   # Video Service
   video-service:
     build:
-      context: ../fiap-soat-video-service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: fiap-soat-video-service/Dockerfile
     container_name: vp-video-service
     ports:
       - "8002:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres123@postgres-video:5432/video_db
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-video:5432/video_db
       - REDIS_URL=redis://redis:6379/1
       - AWS_ENDPOINT_URL=http://localstack:4566
       - AWS_ACCESS_KEY_ID=test
@@ -198,15 +198,16 @@ services:
   # Job API Service
   job-api-service:
     build:
-      context: ../fiap-soat-video-jobs
-      dockerfile: Dockerfile.api
+      context: ..
+      dockerfile: fiap-soat-video-jobs/Dockerfile
     container_name: vp-job-api-service
     ports:
       - "8003:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres123@postgres-job:5432/job_db
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-job:5432/job_db
       - REDIS_URL=redis://redis:6379/2
       - AWS_ENDPOINT_URL=http://localstack:4566
+      - PUBLIC_S3_ENDPOINT_URL=http://localhost:4566
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
@@ -234,13 +235,15 @@ services:
   # Job Worker (with FFmpeg)
   job-worker:
     build:
-      context: ../fiap-soat-video-jobs
-      dockerfile: Dockerfile.worker
+      context: ..
+      dockerfile: fiap-soat-video-jobs/Dockerfile
     container_name: vp-job-worker
-    deploy:
-      replicas: 2
+    command: ["python", "-m", "job_service.infrastructure.adapters.input.sqs_consumer"]
+    # deploy:
+    #   replicas: 2
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres123@postgres-job:5432/job_db
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-job:5432/job_db
       - REDIS_URL=redis://redis:6379/2
       - AWS_ENDPOINT_URL=http://localstack:4566
       - AWS_ACCESS_KEY_ID=test
@@ -249,6 +252,7 @@ services:
       - S3_BUCKET=video-uploads
       - S3_OUTPUT_BUCKET=video-outputs
       - SQS_QUEUE_URL=http://localstack:4566/000000000000/job-queue
+      - SQS_JOB_QUEUE_URL=http://localstack:4566/000000000000/job-queue
       - SNS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:job-events
       - LOG_LEVEL=DEBUG
     depends_on:
@@ -264,13 +268,13 @@ services:
   # Notification Service
   notification-service:
     build:
-      context: ../fiap-soat-video-notifications
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: fiap-soat-video-notifications/Dockerfile
     container_name: vp-notification-service
     ports:
       - "8004:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres123@postgres-notification:5432/notification_db
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-notification:5432/notification_db
       - REDIS_URL=redis://redis:6379/3
       - AWS_ENDPOINT_URL=http://localstack:4566
       - AWS_ACCESS_KEY_ID=test
