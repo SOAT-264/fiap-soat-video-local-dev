@@ -281,6 +281,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
       - SQS_QUEUE_URL=http://localstack:4566/000000000000/notification-queue
+      - SQS_NOTIFICATION_QUEUE_URL=http://localstack:4566/000000000000/notification-queue
       - SES_SENDER_EMAIL=noreply@videoprocessor.local
       - AUTH_SERVICE_URL=http://auth-service:8000
       - LOG_LEVEL=DEBUG
@@ -296,6 +297,33 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - video-processor-network
+
+  # Notification Worker
+  notification-worker:
+    build:
+      context: ..
+      dockerfile: fiap-soat-video-notifications/Dockerfile
+    container_name: vp-notification-worker
+    command: ["python", "-m", "notification_service.infrastructure.adapters.input.sqs_consumer"]
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-notification:5432/notification_db
+      - REDIS_URL=redis://redis:6379/3
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - SQS_NOTIFICATION_QUEUE_URL=http://localstack:4566/000000000000/notification-queue
+      - SES_SENDER_EMAIL=noreply@videoprocessor.local
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - LOG_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres-notification:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
     networks:
       - video-processor-network
 
