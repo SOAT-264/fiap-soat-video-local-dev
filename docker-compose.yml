@@ -14,8 +14,6 @@ services:
       POSTGRES_DB: auth_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5432:5432"
     volumes:
       - postgres-auth-data:/var/lib/postgresql/data
       - ./init-scripts/init-auth-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -35,8 +33,6 @@ services:
       POSTGRES_DB: video_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5433:5432"
     volumes:
       - postgres-video-data:/var/lib/postgresql/data
       - ./init-scripts/init-video-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -56,8 +52,6 @@ services:
       POSTGRES_DB: job_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5434:5432"
     volumes:
       - postgres-job-data:/var/lib/postgresql/data
       - ./init-scripts/init-job-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -77,8 +71,6 @@ services:
       POSTGRES_DB: notification_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5435:5432"
     volumes:
       - postgres-notification-data:/var/lib/postgresql/data
       - ./init-scripts/init-notification-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -94,8 +86,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: vp-redis
-    ports:
-      - "6379:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis-data:/data
