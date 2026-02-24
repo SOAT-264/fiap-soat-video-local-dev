@@ -3,6 +3,9 @@ version: '3.8'
 # Full local development environment with all services
 # Run with: docker-compose up -d
 
+include:
+  - path: ../fiap-soat-video-obs/docker-compose.yml
+
 services:
   # ==================== INFRASTRUCTURE ====================
 
@@ -363,6 +366,8 @@ services:
       - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
       - "traefik.http.routers.traefik.entrypoints=web"
       - "traefik.http.routers.traefik.service=api@internal"
+      - "--metrics.prometheus=true" 
+      - "--accesslog=true"
 
 volumes:
   postgres-auth-data:
@@ -374,4 +379,5 @@ volumes:
 
 networks:
   video-processor-network:
+    name: video-processor-network
     driver: bridge
