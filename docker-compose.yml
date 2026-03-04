@@ -1,7 +1,6 @@
-version: '3.8'
-
 # Full local development environment with all services
 # Run with: docker-compose up -d
+# Then deploy fiap-soat-video-jobs on Kubernetes
 
 include:
   - path: ../fiap-soat-video-obs/docker-compose.yml
@@ -17,6 +16,8 @@ services:
       POSTGRES_DB: auth_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
     volumes:
       - postgres-auth-data:/var/lib/postgresql/data
       - ./init-scripts/init-auth-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -36,6 +37,8 @@ services:
       POSTGRES_DB: video_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5433:5432"
     volumes:
       - postgres-video-data:/var/lib/postgresql/data
       - ./init-scripts/init-video-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -55,6 +58,8 @@ services:
       POSTGRES_DB: job_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5434:5432"
     volumes:
       - postgres-job-data:/var/lib/postgresql/data
       - ./init-scripts/init-job-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -74,6 +79,8 @@ services:
       POSTGRES_DB: notification_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5435:5432"
     volumes:
       - postgres-notification-data:/var/lib/postgresql/data
       - ./init-scripts/init-notification-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -89,6 +96,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: vp-redis
+    ports:
+      - "6379:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis-data:/data
@@ -199,79 +208,6 @@ services:
       - "traefik.http.routers.video.entrypoints=web"
       - "traefik.http.services.video.loadbalancer.server.port=8000"
 
-  # Job API Service
-  job-api-service:
-    build:
-      context: ..
-      dockerfile: fiap-soat-video-jobs/Dockerfile
-    container_name: vp-job-api-service
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-job:5432/job_db
-      - REDIS_URL=redis://redis:6379/2
-      - AWS_ENDPOINT_URL=http://localstack:4566
-      - PUBLIC_S3_ENDPOINT_URL=http://aws.localhost
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
-      - AWS_DEFAULT_REGION=us-east-1
-      - SQS_QUEUE_URL=http://localstack:4566/000000000000/job-queue
-      - AUTH_SERVICE_URL=http://auth-service:8000
-      - VIDEO_SERVICE_URL=http://video-service:8000
-      - LOG_LEVEL=DEBUG
-    depends_on:
-      postgres-job:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      localstack:
-        condition: service_healthy
-      auth-service:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - video-processor-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.jobs.rule=Host(`jobs.localhost`)"
-      - "traefik.http.routers.jobs.entrypoints=web"
-      - "traefik.http.services.jobs.loadbalancer.server.port=8000"
-
-  # Job Worker (with FFmpeg)
-  job-worker:
-    build:
-      context: ..
-      dockerfile: fiap-soat-video-jobs/Dockerfile
-    container_name: vp-job-worker
-    command: ["python", "-m", "job_service.infrastructure.adapters.input.sqs_consumer"]
-    # deploy:
-    #   replicas: 2
-    environment:
-      - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-job:5432/job_db
-      - REDIS_URL=redis://redis:6379/2
-      - AWS_ENDPOINT_URL=http://localstack:4566
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
-      - AWS_DEFAULT_REGION=us-east-1
-      - S3_BUCKET=video-uploads
-      - S3_OUTPUT_BUCKET=video-outputs
-      - SQS_QUEUE_URL=http://localstack:4566/000000000000/job-queue
-      - SQS_JOB_QUEUE_URL=http://localstack:4566/000000000000/job-queue
-      - SNS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:job-events
-      - LOG_LEVEL=DEBUG
-    depends_on:
-      postgres-job:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      localstack:
-        condition: service_healthy
-    networks:
-      - video-processor-network
-
   # Notification Service
   notification-service:
     build:
@@ -350,6 +286,8 @@ services:
       - "--api.insecure=false"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.traefik.address=:8080"
       - "--metrics.prometheus=true"
@@ -359,10 +297,10 @@ services:
       - "--accesslog=true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
     depends_on:
       - auth-service
       - video-service
-      - job-api-service
       - notification-service
       - localstack
     networks:

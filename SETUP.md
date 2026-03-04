@@ -45,7 +45,6 @@ docker-compose logs -f
 # Serviço específico
 docker-compose logs -f auth-service
 docker-compose logs -f video-service
-docker-compose logs -f job-api-service
 docker-compose logs -f notification-service
 ```
 
@@ -78,7 +77,7 @@ docker-compose build auth-service
 | nginx-gateway | 8000 | 80 | API Gateway (ponto de entrada principal) |
 | auth-service | 8001 | 8000 | Serviço de autenticação |
 | video-service | 8002 | 8000 | Serviço de gerenciamento de vídeos |
-| job-api-service | 8003 | 8000 | API do serviço de jobs |
+| job-api-service (via Kubernetes) | 8003 | 8000 | API do serviço de jobs |
 | notification-service | 8004 | 8000 | Serviço de notificações |
 | postgres-auth | 5432 | 5432 | Banco de dados do auth-service |
 | postgres-video | 5433 | 5432 | Banco de dados do video-service |
@@ -98,7 +97,7 @@ curl http://localhost:8001/health
 # Health check do video-service
 curl http://localhost:8002/health
 
-# Health check do job-api-service
+# Health check do job-api-service (quando deployado no Kubernetes)
 curl http://localhost:8003/health
 
 # Health check do notification-service
@@ -107,6 +106,27 @@ curl http://localhost:8004/health
 # Através do gateway
 curl http://localhost:8000/health
 ```
+
+## Integração com Kubernetes (job worker + HPA por SQS)
+
+Use este ambiente local como infraestrutura para o deployment Kubernetes do `fiap-soat-video-jobs`.
+
+```powershell
+cd d:\FIAP\HACKATON\fiap-soat-video-local-dev
+docker-compose -f docker-compose.infra.yml up -d
+.\init-scripts\localstack-init.ps1
+
+cd ..
+docker build -t fiap-soat-video-jobs:local -f fiap-soat-video-jobs\Dockerfile .
+
+cd fiap-soat-video-jobs
+kubectl apply -k k8s/overlays/local-dev
+kubectl get hpa -n video-processor
+```
+
+Para ajustar o threshold de escala por tamanho da fila SQS, altere `queueLength` em:
+
+- `..\fiap-soat-video-jobs\k8s\overlays\local-dev\patch-scaledobject-worker.yaml`
 
 ## Estrutura dos Dockerfiles
 

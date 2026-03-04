@@ -58,10 +58,10 @@ docker-compose -f docker-compose.infra.yml up -d
 docker-compose -f docker-compose.infra.yml ps
 ```
 
-### 4. Inicie todos os serviços
+### 4. Inicie os serviços em Docker Compose
 
 ```bash
-# Subir tudo (infraestrutura + microserviços + workers)
+# Subir infraestrutura + microserviços (modo compatível com k8s para jobs)
 docker-compose up -d --build
 
 # Ver logs
@@ -85,9 +85,55 @@ docker-compose logs -f
 | API Docs (Swagger) | http://localhost:8000/docs | - |
 | Auth Service | http://localhost:8001/docs | - |
 | Video Service | http://localhost:8002/docs | - |
-| Job API Service | http://localhost:8003/docs | - |
+| Job API Service (via Kubernetes) | http://localhost:8003/docs | - |
 | Notification Service | http://localhost:8004/docs | - |
 | LocalStack | http://localhost:4566 | - |
+
+---
+
+## ☸️ Rodando Job Worker no Kubernetes (com autoscaling SQS)
+
+Você pode manter a infraestrutura local deste repositório (PostgreSQL, Redis, LocalStack) e executar apenas o `fiap-soat-video-jobs` em Kubernetes com autoscaling por fila SQS.
+
+### 1. Suba a infraestrutura local
+
+```bash
+docker-compose -f docker-compose.infra.yml up -d
+./init-scripts/localstack-init.sh
+```
+
+### 2. Garanta KEDA no cluster
+
+```bash
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+helm install keda kedacore/keda --namespace keda --create-namespace
+```
+
+### 3. Build da imagem local do jobs (sem registry externo)
+
+```bash
+cd ..
+docker build -t fiap-soat-video-jobs:local -f fiap-soat-video-jobs/Dockerfile .
+```
+
+### 4. Aplique o overlay local do jobs
+
+```bash
+cd fiap-soat-video-jobs
+kubectl apply -k k8s/overlays/local-dev
+```
+
+### 5. Valide o HPA criado pelo KEDA
+
+```bash
+kubectl get scaledobject -n video-processor
+kubectl get hpa -n video-processor
+```
+
+### Parametrizar tamanho da fila para escalar
+
+Edite `queueLength` em `../fiap-soat-video-jobs/k8s/overlays/local-dev/patch-scaledobject-worker.yaml`.
 
 ---
 
@@ -95,7 +141,7 @@ docker-compose logs -f
 
 ```
 fiap-soat-video-local-dev/
-├── docker-compose.yml           # Orquestra TODOS os serviços + workers
+├── docker-compose.yml           # Orquestra infra + microserviços (jobs via Kubernetes)
 ├── docker-compose.infra.yml     # Apenas infraestrutura
 ├── .env.example                  # Variáveis de ambiente
 ├── init-scripts/                 # Scripts de inicialização do banco
@@ -124,11 +170,10 @@ docker-compose up -d
 docker-compose down
 
 # Ver logs de um serviço específico
-docker-compose logs -f job-worker
 docker-compose logs -f notification-worker
 
 # Reiniciar um serviço
-docker-compose restart job-worker
+docker-compose restart notification-worker
 
 # Ver status
 docker-compose ps

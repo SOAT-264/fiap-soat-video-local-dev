@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Infrastructure-only compose file for local development
 # Run with: docker-compose -f docker-compose.infra.yml up -d
 

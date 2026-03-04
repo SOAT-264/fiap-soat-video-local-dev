@@ -1,0 +1,12 @@
+http:
+  routers:
+    jobs-k8s:
+      rule: Host(`jobs.localhost`)
+      entryPoints:
+        - web
+      service: jobs-k8s-service
+  services:
+    jobs-k8s-service:
+      loadBalancer:
+        servers:
+          - url: http://host.docker.internal:32514
