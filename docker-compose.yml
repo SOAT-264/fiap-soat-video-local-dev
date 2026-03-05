@@ -1,6 +1,6 @@
 # Full local development environment with all services
 # Run with: docker-compose up -d
-# Then deploy fiap-soat-video-jobs on Kubernetes
+# Then deploy fiap-soat-video-jobs and fiap-soat-video-notifications on Kubernetes
 
 include:
   - path: ../fiap-soat-video-obs/docker-compose.yml

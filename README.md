@@ -85,15 +85,15 @@ docker-compose logs -f
 | API Docs (Swagger) | http://localhost:8000/docs | - |
 | Auth Service | http://localhost:8001/docs | - |
 | Video Service | http://localhost:8002/docs | - |
-| Job API Service (via Kubernetes) | http://localhost:8003/docs | - |
-| Notification Service | http://localhost:8004/docs | - |
+| Job API Service (via Kubernetes) | http://jobs.localhost/docs | - |
+| Notification Service (via Kubernetes) | http://notify.localhost/docs | - |
 | LocalStack | http://localhost:4566 | - |
 
 ---
 
-## ☸️ Rodando Job Worker no Kubernetes (com autoscaling SQS)
+## ☸️ Rodando Jobs e Notifications no Kubernetes (com autoscaling SQS)
 
-Você pode manter a infraestrutura local deste repositório (PostgreSQL, Redis, LocalStack) e executar apenas o `fiap-soat-video-jobs` em Kubernetes com autoscaling por fila SQS.
+Você pode manter a infraestrutura local deste repositório (PostgreSQL, Redis, LocalStack) e executar `fiap-soat-video-jobs` e `fiap-soat-video-notifications` em Kubernetes com autoscaling por fila SQS.
 
 ### 1. Suba a infraestrutura local
 
@@ -110,17 +110,21 @@ helm repo update
 helm install keda kedacore/keda --namespace keda --create-namespace
 ```
 
-### 3. Build da imagem local do jobs (sem registry externo)
+### 3. Build das imagens locais (sem registry externo)
 
 ```bash
 cd ..
 docker build -t fiap-soat-video-jobs:local -f fiap-soat-video-jobs/Dockerfile .
+docker build -t fiap-soat-video-notifications:local -f fiap-soat-video-notifications/Dockerfile .
 ```
 
-### 4. Aplique o overlay local do jobs
+### 4. Aplique os overlays locais do jobs e notifications
 
 ```bash
 cd fiap-soat-video-jobs
+kubectl apply -k k8s/overlays/local-dev
+
+cd ../fiap-soat-video-notifications
 kubectl apply -k k8s/overlays/local-dev
 ```
 
@@ -133,7 +137,10 @@ kubectl get hpa -n video-processor
 
 ### Parametrizar tamanho da fila para escalar
 
-Edite `queueLength` em `../fiap-soat-video-jobs/k8s/overlays/local-dev/patch-scaledobject-worker.yaml`.
+Edite `queueLength` em:
+
+- `../fiap-soat-video-jobs/k8s/overlays/local-dev/patch-scaledobject-worker.yaml`
+- `../fiap-soat-video-notifications/k8s/overlays/local-dev/patch-scaledobject-worker.yaml`
 
 ---
 
@@ -141,7 +148,7 @@ Edite `queueLength` em `../fiap-soat-video-jobs/k8s/overlays/local-dev/patch-sca
 
 ```
 fiap-soat-video-local-dev/
-├── docker-compose.yml           # Orquestra infra + microserviços (jobs via Kubernetes)
+├── docker-compose.yml           # Orquestra infra + microserviços (jobs e notifications via Kubernetes)
 ├── docker-compose.infra.yml     # Apenas infraestrutura
 ├── .env.example                  # Variáveis de ambiente
 ├── init-scripts/                 # Scripts de inicialização do banco

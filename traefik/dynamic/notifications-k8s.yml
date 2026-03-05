@@ -1,0 +1,12 @@
+http:
+  routers:
+    notifications-k8s:
+      rule: Host(`notify.localhost`)
+      entryPoints:
+        - web
+      service: notifications-k8s-service
+  services:
+    notifications-k8s-service:
+      loadBalancer:
+        servers:
+          - url: http://host.docker.internal:32515
