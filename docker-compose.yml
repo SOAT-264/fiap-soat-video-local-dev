@@ -1,6 +1,6 @@
-# Full local development environment with all services
-# Run with: docker-compose up -d
-# Then deploy fiap-soat-video-jobs, fiap-soat-video-notifications and fiap-soat-video-service on Kubernetes
+# Full local development environment for infra, gateway and observability
+# App services below are optional and disabled by default via profile `compose-apps`
+# Use start.ps1 to run auth/jobs/notifications/video on Kubernetes local-dev overlays
 
 include:
   - path: ../fiap-soat-video-obs/docker-compose.yml
@@ -144,6 +144,8 @@ services:
       context: ..
       dockerfile: fiap-soat-video-auth/Dockerfile
     container_name: vp-auth-service
+    profiles:
+      - compose-apps
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-auth:5432/auth_db
       - REDIS_URL=redis://redis:6379/0
@@ -177,6 +179,8 @@ services:
       context: ..
       dockerfile: fiap-soat-video-service/Dockerfile
     container_name: vp-video-service
+    profiles:
+      - compose-apps
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-video:5432/video_db
       - REDIS_URL=redis://redis:6379/1
@@ -216,6 +220,8 @@ services:
       context: ..
       dockerfile: fiap-soat-video-notifications/Dockerfile
     container_name: vp-notification-service
+    profiles:
+      - compose-apps
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-notification:5432/notification_db
       - REDIS_URL=redis://redis:6379/3
@@ -254,6 +260,8 @@ services:
       context: ..
       dockerfile: fiap-soat-video-notifications/Dockerfile
     container_name: vp-notification-worker
+    profiles:
+      - compose-apps
     command: ["python", "-m", "notification_service.infrastructure.adapters.input.sqs_consumer"]
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres123@postgres-notification:5432/notification_db
@@ -301,9 +309,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/dynamic:/etc/traefik/dynamic:ro
     depends_on:
-      - auth-service
-      - video-service
-      - notification-service
       - localstack
     networks:
       - video-processor-network

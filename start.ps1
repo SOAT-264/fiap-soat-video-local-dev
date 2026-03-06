@@ -42,12 +42,8 @@ if (-not (Test-Path $initScript)) {
 
 Push-Location $localDevDir
 try {
-    Run-Step -Name "Subir Docker Compose" -Action {
-        docker compose up -d
-    }
-
-    Run-Step -Name "Desativar services no Docker Compose (usaremos Kubernetes)" -Action {
-        docker compose stop auth-service video-service notification-service notification-worker
+    Run-Step -Name "Subir infraestrutura base no Docker Compose" -Action {
+        docker compose up -d --remove-orphans
     }
 
     Run-Step -Name "Inicializar recursos LocalStack" -Action {
