@@ -1,0 +1,12 @@
+http:
+  routers:
+    video-k8s:
+      rule: Host(`video.localhost`) || Host(`video-k8s.localhost`)
+      entryPoints:
+        - web
+      service: video-k8s-service
+  services:
+    video-k8s-service:
+      loadBalancer:
+        servers:
+          - url: http://host.docker.internal:32516

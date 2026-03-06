@@ -16,6 +16,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $localDevDir = $PSScriptRoot
 $jobsDir = Join-Path $root "fiap-soat-video-jobs"
 $notificationsDir = Join-Path $root "fiap-soat-video-notifications"
+$videoDir = Join-Path $root "fiap-soat-video-service"
 $initScript = Join-Path $localDevDir "init-scripts\localstack-init.ps1"
 
 if (-not (Test-Path $jobsDir)) {
@@ -24,6 +25,10 @@ if (-not (Test-Path $jobsDir)) {
 
 if (-not (Test-Path $notificationsDir)) {
     throw "Diretorio do notifications nao encontrado: $notificationsDir"
+}
+
+if (-not (Test-Path $videoDir)) {
+    throw "Diretorio do video-service nao encontrado: $videoDir"
 }
 
 if (-not (Test-Path $initScript)) {
@@ -36,8 +41,8 @@ try {
         docker compose up -d
     }
 
-    Run-Step -Name "Desativar notifications no Docker Compose (usaremos Kubernetes)" -Action {
-        docker compose stop notification-service notification-worker
+    Run-Step -Name "Desativar services no Docker Compose (usaremos Kubernetes)" -Action {
+        docker compose stop video-service notification-service notification-worker
     }
 
     Run-Step -Name "Inicializar recursos LocalStack" -Action {
@@ -58,6 +63,16 @@ try {
         Push-Location $root
         try {
             docker build -t fiap-soat-video-notifications:local -f fiap-soat-video-notifications/Dockerfile .
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    Run-Step -Name "Build imagem local do video-service" -Action {
+        Push-Location $root
+        try {
+            docker build -t fiap-soat-video-service:local -f fiap-soat-video-service/Dockerfile .
         }
         finally {
             Pop-Location
@@ -88,6 +103,17 @@ try {
         }
     }
 
+    Run-Step -Name "Aplicar manifests k8s do video-service" -Action {
+        Push-Location $videoDir
+        try {
+            kubectl apply -k k8s/overlays/local-dev
+            kubectl rollout status deployment/video-api-service -n video-processor --timeout=180s
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
     Run-Step -Name "Recarregar Traefik e Prometheus" -Action {
         docker compose restart traefik prometheus
     }
@@ -95,6 +121,7 @@ try {
     Write-Host "`nAmbiente pronto." -ForegroundColor Green
     Write-Host "- jobs health: http://jobs.localhost/health"
     Write-Host "- notifications health: http://notify.localhost/health"
+    Write-Host "- video (k8s) health: http://video.localhost/health"
     Write-Host "- grafana: http://grafana.localhost"
 }
 finally {

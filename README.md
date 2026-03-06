@@ -84,16 +84,20 @@ docker-compose logs -f
 |---------|-----|-------------|
 | API Docs (Swagger) | http://localhost:8000/docs | - |
 | Auth Service | http://localhost:8001/docs | - |
-| Video Service | http://localhost:8002/docs | - |
+| Video Service (Docker Compose) | http://localhost:8002/docs | - |
+| Video Service (via Kubernetes) | http://video.localhost/docs | - |
 | Job API Service (via Kubernetes) | http://jobs.localhost/docs | - |
 | Notification Service (via Kubernetes) | http://notify.localhost/docs | - |
 | LocalStack | http://localhost:4566 | - |
 
 ---
 
-## ☸️ Rodando Jobs e Notifications no Kubernetes (com autoscaling SQS)
+## ☸️ Rodando Jobs, Notifications e Video Service no Kubernetes
 
-Você pode manter a infraestrutura local deste repositório (PostgreSQL, Redis, LocalStack) e executar `fiap-soat-video-jobs` e `fiap-soat-video-notifications` em Kubernetes com autoscaling por fila SQS.
+Você pode manter a infraestrutura local deste repositório (PostgreSQL, Redis, LocalStack) e executar `fiap-soat-video-jobs`, `fiap-soat-video-notifications` e `fiap-soat-video-service` no Kubernetes.
+
+- `jobs` e `notifications`: autoscaling via KEDA com base em SQS.
+- `video-service`: autoscaling via HPA com base em CPU e memória.
 
 ### 1. Suba a infraestrutura local
 
@@ -116,9 +120,10 @@ helm install keda kedacore/keda --namespace keda --create-namespace
 cd ..
 docker build -t fiap-soat-video-jobs:local -f fiap-soat-video-jobs/Dockerfile .
 docker build -t fiap-soat-video-notifications:local -f fiap-soat-video-notifications/Dockerfile .
+docker build -t fiap-soat-video-service:local -f fiap-soat-video-service/Dockerfile .
 ```
 
-### 4. Aplique os overlays locais do jobs e notifications
+### 4. Aplique os overlays locais do jobs, notifications e video-service
 
 ```bash
 cd fiap-soat-video-jobs
@@ -126,13 +131,17 @@ kubectl apply -k k8s/overlays/local-dev
 
 cd ../fiap-soat-video-notifications
 kubectl apply -k k8s/overlays/local-dev
+
+cd ../fiap-soat-video-service
+kubectl apply -k k8s/overlays/local-dev
 ```
 
-### 5. Valide o HPA criado pelo KEDA
+### 5. Valide os autoscalers
 
 ```bash
 kubectl get scaledobject -n video-processor
 kubectl get hpa -n video-processor
+kubectl describe hpa video-api-service-hpa -n video-processor
 ```
 
 ### Parametrizar tamanho da fila para escalar
@@ -141,6 +150,12 @@ Edite `queueLength` em:
 
 - `../fiap-soat-video-jobs/k8s/overlays/local-dev/patch-scaledobject-worker.yaml`
 - `../fiap-soat-video-notifications/k8s/overlays/local-dev/patch-scaledobject-worker.yaml`
+
+### Parametrizar o HPA do Video Service
+
+Edite os thresholds em:
+
+- `../fiap-soat-video-service/k8s/base/hpa-api.yaml`
 
 ---
 

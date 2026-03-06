@@ -1,6 +1,6 @@
 # Full local development environment with all services
 # Run with: docker-compose up -d
-# Then deploy fiap-soat-video-jobs and fiap-soat-video-notifications on Kubernetes
+# Then deploy fiap-soat-video-jobs, fiap-soat-video-notifications and fiap-soat-video-service on Kubernetes
 
 include:
   - path: ../fiap-soat-video-obs/docker-compose.yml
@@ -163,6 +163,8 @@ services:
       retries: 3
     networks:
       - video-processor-network
+    ports:
+      - "8001:8000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.auth.rule=Host(`auth.localhost`)"

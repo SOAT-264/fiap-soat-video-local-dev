@@ -107,9 +107,9 @@ curl http://localhost:8004/health
 curl http://localhost:8000/health
 ```
 
-## Integração com Kubernetes (jobs + notifications com HPA por SQS)
+## Integracao com Kubernetes (jobs + notifications + video-service)
 
-Use este ambiente local como infraestrutura para o deployment Kubernetes do `fiap-soat-video-jobs` e `fiap-soat-video-notifications`.
+Use este ambiente local como infraestrutura para o deployment Kubernetes do `fiap-soat-video-jobs`, `fiap-soat-video-notifications` e `fiap-soat-video-service`.
 
 ```powershell
 cd d:\FIAP\HACKATON\fiap-soat-video-local-dev
@@ -119,11 +119,15 @@ docker-compose -f docker-compose.infra.yml up -d
 cd ..
 docker build -t fiap-soat-video-jobs:local -f fiap-soat-video-jobs\Dockerfile .
 docker build -t fiap-soat-video-notifications:local -f fiap-soat-video-notifications\Dockerfile .
+docker build -t fiap-soat-video-service:local -f fiap-soat-video-service\Dockerfile .
 
 cd fiap-soat-video-jobs
 kubectl apply -k k8s/overlays/local-dev
 
 cd ..\fiap-soat-video-notifications
+kubectl apply -k k8s/overlays/local-dev
+
+cd ..\fiap-soat-video-service
 kubectl apply -k k8s/overlays/local-dev
 
 kubectl get hpa -n video-processor
@@ -133,6 +137,10 @@ Para ajustar o threshold de escala por tamanho da fila SQS, altere `queueLength`
 
 - `..\fiap-soat-video-jobs\k8s\overlays\local-dev\patch-scaledobject-worker.yaml`
 - `..\fiap-soat-video-notifications\k8s\overlays\local-dev\patch-scaledobject-worker.yaml`
+
+Para ajustar o HPA por CPU/memoria do Video Service, altere:
+
+- `..\fiap-soat-video-service\k8s\base\hpa-api.yaml`
 
 ## Estrutura dos Dockerfiles
 
