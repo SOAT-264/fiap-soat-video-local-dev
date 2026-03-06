@@ -1,0 +1,12 @@
+http:
+  routers:
+    auth-k8s:
+      rule: Host(`auth.localhost`) || Host(`auth-k8s.localhost`)
+      entryPoints:
+        - web
+      service: auth-k8s-service
+  services:
+    auth-k8s-service:
+      loadBalancer:
+        servers:
+          - url: http://host.docker.internal:32513

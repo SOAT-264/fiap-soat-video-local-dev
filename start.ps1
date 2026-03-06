@@ -14,10 +14,15 @@ function Run-Step {
 
 $root = Split-Path -Parent $PSScriptRoot
 $localDevDir = $PSScriptRoot
+$authDir = Join-Path $root "fiap-soat-video-auth"
 $jobsDir = Join-Path $root "fiap-soat-video-jobs"
 $notificationsDir = Join-Path $root "fiap-soat-video-notifications"
 $videoDir = Join-Path $root "fiap-soat-video-service"
 $initScript = Join-Path $localDevDir "init-scripts\localstack-init.ps1"
+
+if (-not (Test-Path $authDir)) {
+    throw "Diretorio do auth nao encontrado: $authDir"
+}
 
 if (-not (Test-Path $jobsDir)) {
     throw "Diretorio do jobs nao encontrado: $jobsDir"
@@ -42,11 +47,21 @@ try {
     }
 
     Run-Step -Name "Desativar services no Docker Compose (usaremos Kubernetes)" -Action {
-        docker compose stop video-service notification-service notification-worker
+        docker compose stop auth-service video-service notification-service notification-worker
     }
 
     Run-Step -Name "Inicializar recursos LocalStack" -Action {
         & $initScript
+    }
+
+    Run-Step -Name "Build imagem local do auth" -Action {
+        Push-Location $root
+        try {
+            docker build -t fiap-soat-video-auth:local -f fiap-soat-video-auth/Dockerfile .
+        }
+        finally {
+            Pop-Location
+        }
     }
 
     Run-Step -Name "Build imagem local do jobs" -Action {
@@ -73,6 +88,17 @@ try {
         Push-Location $root
         try {
             docker build -t fiap-soat-video-service:local -f fiap-soat-video-service/Dockerfile .
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    Run-Step -Name "Aplicar manifests k8s do auth" -Action {
+        Push-Location $authDir
+        try {
+            kubectl apply -k k8s/overlays/local-dev
+            kubectl rollout status deployment/auth-service -n video-processor --timeout=180s
         }
         finally {
             Pop-Location
@@ -119,6 +145,7 @@ try {
     }
 
     Write-Host "`nAmbiente pronto." -ForegroundColor Green
+    Write-Host "- auth (k8s) health: http://auth.localhost/health"
     Write-Host "- jobs health: http://jobs.localhost/health"
     Write-Host "- notifications health: http://notify.localhost/health"
     Write-Host "- video (k8s) health: http://video.localhost/health"

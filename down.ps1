@@ -20,7 +20,7 @@ $localDevDir = $PSScriptRoot
 
 Push-Location $localDevDir
 try {
-    Run-Step -Name "Remover namespace de jobs, notifications e video-service no Kubernetes" -Action {
+    Run-Step -Name "Remover namespace de auth, jobs, notifications e video-service no Kubernetes" -Action {
         kubectl delete namespace video-processor --ignore-not-found=true
     }
 
