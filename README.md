@@ -1,434 +1,100 @@
-# 🎬 Video Processor - Ambiente de Desenvolvimento Local
+# fiap-soat-video-local-dev
 
-Este repositório contém tudo para rodar localmente a arquitetura de microserviços do Video Processor (auth, upload, jobs e notificacoes), incluindo a infraestrutura simulada via LocalStack.
+## Introdução
+Este é o repositório principal do ecossistema FIAP SOAT Video Processor. Ele orquestra a infraestrutura local, o roteamento, a observabilidade e o deploy dos microserviços para desenvolvimento integrado.
 
-## 📐 Arquitetura
+## Sumário
+- Explicação do projeto
+- Objetivo
+- Como funciona
+- Integrações com outros repositórios
+- Como executar
+- Como testar
 
-### AWS Production
-![AWS Architecture](./architecture_aws.png)
+## Explicação do projeto
+O repositório centraliza o ambiente de desenvolvimento local com:
+- `docker-compose.yml` para infraestrutura base, gateway (Traefik) e stack de observabilidade.
+- Scripts de inicialização (`start.ps1`) e encerramento (`down.ps1`) do ambiente completo.
+- Scripts de bootstrap do LocalStack para S3, SNS, SQS e SES (`init-scripts/localstack-init.ps1`).
+- Rotas dinâmicas do Traefik para expor os serviços Kubernetes em domínios locais (`*.localhost`).
 
-### Local Development  
-![Local Architecture](./architecture_local.png)
+## Objetivo
+Padronizar e simplificar o processo de subir, integrar e validar todos os serviços do sistema em um único fluxo de desenvolvimento local.
 
----
+## Como funciona
+1. O `docker compose up -d` sobe a infraestrutura local:
+PostgreSQLs por domínio, Redis, LocalStack, Traefik e observabilidade (Prometheus/Grafana/Loki/Blackbox).
+2. O script `localstack-init.ps1` cria e conecta recursos AWS simulados:
+S3 (`video-uploads`, `video-outputs`), SNS (`video-events`, `job-events`) e SQS (`job-queue`, `notification-queue`).
+3. O script `start.ps1` faz build das imagens locais dos serviços e aplica os overlays Kubernetes `local-dev` dos repositórios:
+auth, jobs (api + worker), notifications (api + worker) e video-service.
+4. O Traefik roteia os hosts locais para NodePorts Kubernetes:
+`auth.localhost`, `jobs.localhost`, `notify.localhost`, `video.localhost`.
+5. O pipeline assíncrono principal fica:
+`video uploaded -> video-events (SNS) -> job-queue (SQS) -> jobs worker -> job-events (SNS) -> notification-queue (SQS) -> notifications worker`.
 
-## 🏗️ Repositórios do Projeto
+## Integrações com outros repositórios
+| Repositório integrado | Como integra | Para que serve |
+| --- | --- | --- |
+| `fiap-soat-video-auth` | Build da imagem local e deploy via `kubectl apply -k .../k8s/overlays/local-dev` | Disponibilizar autenticação/identidade para os demais serviços |
+| `fiap-soat-video-service` | Build e deploy, roteamento `video.localhost` e dependência de LocalStack para storage/eventos | Receber uploads de vídeo e disparar eventos de processamento |
+| `fiap-soat-video-jobs` | Build e deploy da API e worker SQS/KEDA | Processar vídeos assincronamente e publicar eventos de status |
+| `fiap-soat-video-notifications` | Build e deploy da API e worker SQS/KEDA | Consumir eventos de job e enviar notificações por e-mail |
+| `fiap-soat-video-shared` | Copiado e instalado nos Dockerfiles dos serviços | Compartilhar contratos, eventos e value objects entre microserviços |
+| `fiap-soat-video-obs` | Incluído no `docker-compose.yml` principal via `include` | Coletar métricas, health checks e dashboards do ambiente |
 
-| Repositório | Descrição | Porta |
-|-------------|-----------|-------|
-| [fiap-soat-video-shared](https://github.com/morgadope/fiap-soat-video-shared) | Biblioteca compartilhada (Value Objects, DTOs, Events) | - |
-| [fiap-soat-video-auth](https://github.com/morgadope/fiap-soat-video-auth) | Serviço de autenticação (JWT, registro, login) | 8001 |
-| [fiap-soat-video-service](https://github.com/morgadope/fiap-soat-video-service) | Serviço de upload e gestão de vídeos | 8002 |
-| [fiap-soat-video-jobs](https://github.com/morgadope/fiap-soat-video-jobs) | Serviço de processamento de jobs (FFmpeg) | 8003 |
-| [fiap-soat-video-notifications](https://github.com/morgadope/fiap-soat-video-notifications) | Serviço de notificações por email (SES local) | 8004 |
-| [fiap-soat-video-infra](https://github.com/morgadope/fiap-soat-video-infra) | Infraestrutura Terraform para AWS | - |
-| [fiap-soat-video-local-dev](https://github.com/morgadope/fiap-soat-video-local-dev) | Este repositório - ambiente local | - |
-
----
-
-## 🚀 Quick Start - Rodar Localmente
-
+## Como executar
 ### Pré-requisitos
+- Docker Desktop com Kubernetes habilitado.
+- `kubectl` configurado para o cluster local.
+- PowerShell 5.1+.
 
-- Docker Desktop instalado e rodando
-- Git
-- 8GB RAM disponível (recomendado)
-
-### 1. Clone este repositório
-
-```bash
-git clone https://github.com/morgadope/fiap-soat-video-local-dev.git
-cd fiap-soat-video-local-dev
+### Execução recomendada (ambiente completo)
+```powershell
+cd /fiap-soat-video-local-dev
+Copy-Item .env.example .env -ErrorAction SilentlyContinue
+.\start.ps1
 ```
 
-### 2. Configure as variáveis de ambiente
+### Execução alternativa
 
-```bash
-cp .env.example .env
-# Edite o .env conforme necessário
+Subir o compose principal com serviços de app em containers (perfil opcional):
+```powershell
+cd /fiap-soat-video-local-dev
+docker compose --profile compose-apps up -d
 ```
 
-### 3. Inicie a infraestrutura
-
-```bash
-# Subir apenas infraestrutura (PostgreSQL, Redis, LocalStack)
-docker-compose -f docker-compose.infra.yml up -d
-
-# Verificar se está saudável
-docker-compose -f docker-compose.infra.yml ps
+### Encerrar ambiente
+```powershell
+cd /fiap-soat-video-local-dev
+.\down.ps1
 ```
 
-### 4. Inicie os serviços em Docker Compose
-
-```bash
-# Subir infraestrutura + microserviços (modo compatível com k8s para jobs)
-docker-compose up -d --build
-
-# Ver logs
-docker-compose logs -f
+Com limpeza total de volumes:
+```powershell
+cd /fiap-soat-video-local-dev
+.\down.ps1 -PurgeData
 ```
 
-### 5. Inicialize recursos AWS locais
+## Como testar
+Este repositório não possui suíte automatizada de testes. A validação é feita por smoke tests de ambiente.
 
-```bash
-# Windows
-./init-scripts/localstack-init.ps1
-
-# Linux/Mac
-./init-scripts/localstack-init.sh
+1. Validar pods e serviços Kubernetes:
+```powershell
+kubectl get pods -n video-processor
+kubectl get svc -n video-processor
 ```
 
-### 6. Acesse os serviços
-
-| Serviço | URL | Credenciais |
-|---------|-----|-------------|
-| API Docs (Swagger) | http://localhost:8000/docs | - |
-| Auth Service | http://localhost:8001/docs | - |
-| Video Service (Docker Compose) | http://localhost:8002/docs | - |
-| Video Service (via Kubernetes) | http://video.localhost/docs | - |
-| Job API Service (via Kubernetes) | http://jobs.localhost/docs | - |
-| Notification Service (via Kubernetes) | http://notify.localhost/docs | - |
-| LocalStack | http://localhost:4566 | - |
-
----
-
-## ☸️ Rodando Jobs, Notifications e Video Service no Kubernetes
-
-Você pode manter a infraestrutura local deste repositório (PostgreSQL, Redis, LocalStack) e executar `fiap-soat-video-jobs`, `fiap-soat-video-notifications` e `fiap-soat-video-service` no Kubernetes.
-
-- `jobs` e `notifications`: autoscaling via KEDA com base em SQS.
-- `video-service`: autoscaling via HPA com base em CPU e memória.
-
-### 1. Suba a infraestrutura local
-
-```bash
-docker-compose -f docker-compose.infra.yml up -d
-./init-scripts/localstack-init.sh
+2. Validar health checks expostos pelo gateway:
+```powershell
+curl http://auth.localhost/health
+curl http://video.localhost/health
+curl http://jobs.localhost/health
+curl http://notify.localhost/health
 ```
 
-### 2. Garanta KEDA no cluster
+3. Validar observabilidade:
+- Grafana: `http://grafana.localhost`
+- Prometheus: `http://prometheus.localhost`
+- Traefik Dashboard: `http://traefik.localhost`
 
-```bash
-helm repo add kedacore https://kedacore.github.io/charts
-helm repo update
-helm install keda kedacore/keda --namespace keda --create-namespace
-```
-
-### 3. Build das imagens locais (sem registry externo)
-
-```bash
-cd ..
-docker build -t fiap-soat-video-jobs:local -f fiap-soat-video-jobs/Dockerfile .
-docker build -t fiap-soat-video-notifications:local -f fiap-soat-video-notifications/Dockerfile .
-docker build -t fiap-soat-video-service:local -f fiap-soat-video-service/Dockerfile .
-```
-
-### 4. Aplique os overlays locais do jobs, notifications e video-service
-
-```bash
-cd fiap-soat-video-jobs
-kubectl apply -k k8s/overlays/local-dev
-
-cd ../fiap-soat-video-notifications
-kubectl apply -k k8s/overlays/local-dev
-
-cd ../fiap-soat-video-service
-kubectl apply -k k8s/overlays/local-dev
-```
-
-### 5. Valide os autoscalers
-
-```bash
-kubectl get scaledobject -n video-processor
-kubectl get hpa -n video-processor
-kubectl describe hpa video-api-service-hpa -n video-processor
-```
-
-### Parametrizar tamanho da fila para escalar
-
-Edite `queueLength` em:
-
-- `../fiap-soat-video-jobs/k8s/overlays/local-dev/patch-scaledobject-worker.yaml`
-- `../fiap-soat-video-notifications/k8s/overlays/local-dev/patch-scaledobject-worker.yaml`
-
-### Parametrizar o HPA do Video Service
-
-Edite os thresholds em:
-
-- `../fiap-soat-video-service/k8s/base/hpa-api.yaml`
-
----
-
-## 📁 Estrutura dos Arquivos
-
-```
-fiap-soat-video-local-dev/
-├── docker-compose.yml           # Orquestra infra + microserviços (jobs e notifications via Kubernetes)
-├── docker-compose.infra.yml     # Apenas infraestrutura
-├── .env.example                  # Variáveis de ambiente
-├── init-scripts/                 # Scripts de inicialização do banco
-│   ├── init-auth-db.sql         # Schema do Auth Service
-│   ├── init-video-db.sql        # Schema do Video Service
-│   ├── init-job-db.sql          # Schema do Job Service
-│   └── init-notification-db.sql # Schema do Notification Service
-├── nginx/
-│   └── nginx.conf               # Configuração do load balancer
-├── architecture_aws.png         # Diagrama da arquitetura AWS
-├── architecture_local.png       # Diagrama da arquitetura local
-└── generate_diagrams.py         # Script para gerar diagramas
-```
-
----
-
-## 🔧 Comandos Úteis
-
-### Docker Compose
-
-```bash
-# Iniciar tudo
-docker-compose up -d
-
-# Parar tudo
-docker-compose down
-
-# Ver logs de um serviço específico
-docker-compose logs -f notification-worker
-
-# Reiniciar um serviço
-docker-compose restart notification-worker
-
-# Ver status
-docker-compose ps
-
-# Limpar tudo (incluindo volumes)
-docker-compose down -v
-```
-
-### Banco de Dados
-
-```bash
-# Acessar PostgreSQL do job-service
-docker exec -it vp-postgres-job psql -U postgres -d job_db
-
-# Ver tabelas
-\dt
-
-# Sair
-\q
-```
-
-### Redis
-
-```bash
-# Acessar Redis CLI
-docker exec -it vp-redis redis-cli
-
-# Ver todas as chaves
-KEYS *
-
-# Sair
-exit
-```
-
----
-
-## 🧪 Testando a API
-
-### 1. Health Check
-
-```bash
-curl http://localhost:8000/health | python -m json.tool
-```
-
-### 2. Registrar Usuário
-
-```bash
-curl -X POST http://localhost:8000/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@test.com","password":"Test1234!","full_name":"Test User"}'
-```
-
-### 3. Login
-
-```bash
-curl -X POST http://localhost:8000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@test.com","password":"Test1234!"}'
-```
-
-### 4. Upload de vídeo (com token)
-
-```bash
-TOKEN="seu_token_aqui"
-curl -X POST http://localhost:8000/videos/upload \
-   -H "Authorization: Bearer $TOKEN" \
-   -F "file=@meu_video.mp4"
-```
-
-### 5. Listar Vídeos (com token)
-
-```bash
-TOKEN="seu_token_aqui"
-curl http://localhost:8000/videos \
-  -H "Authorization: Bearer $TOKEN"
-```
-
----
-
-## 🔧 LocalStack - Simulando AWS Localmente
-
-O LocalStack simula os serviços AWS localmente. Já está configurado no `docker-compose.infra.yml`.
-
-### Serviços Disponíveis
-
-| Serviço AWS | Porta Local | Uso |
-|-------------|-------------|-----|
-| S3 | 4566 | Armazenamento de vídeos e frames |
-| SQS | 4566 | Fila de processamento de jobs |
-| SNS | 4566 | Notificações de eventos |
-| SES | 4566 | Envio de emails |
-
-### Configuração
-
-Configure as variáveis de ambiente para usar LocalStack:
-
-```bash
-export AWS_ENDPOINT_URL=http://localhost:4566
-export AWS_ACCESS_KEY_ID=test
-export AWS_SECRET_ACCESS_KEY=test
-export AWS_REGION=us-east-1
-```
-
-### Recursos Criados Automaticamente
-
-O script `init-scripts/localstack-init.sh` cria:
-
-- **S3 Buckets**: `video-uploads`, `video-outputs`
-- **SQS Queues**: `job-queue`, `notification-queue` (com DLQs)
-- **SNS Topics**: `video-events`, `job-events`
-- **SES**: Email verificado `noreply@videoprocessor.local`
-
-### Usando AWS CLI com LocalStack
-
-```bash
-# Listar buckets
-aws --endpoint-url=http://localhost:4566 s3 ls
-
-# Ver filas SQS
-aws --endpoint-url=http://localhost:4566 sqs list-queues
-
-# Ver tópicos SNS
-aws --endpoint-url=http://localhost:4566 sns list-topics
-```
-
-## 🔄 Fluxo de Funcionamento
-
-1. Usuario registra e faz login no Auth Service (JWT).
-2. Upload no Video Service grava metadados e publica evento `video-events`.
-3. Job Worker consome o evento, cria o job e processa o video (FFmpeg, 1 fps).
-4. Frames sao zipados e enviados ao bucket de output.
-5. Job Worker publica evento `job-events`.
-6. Notification Worker consome o evento e registra notificacao no banco.
-
-## 📥 Download do ZIP
-
-O Job API retorna `download_url` com link pronto (presigned) no endpoint `/jobs`.
-
-## 📦 Usando a Shared Library
-
-```python
-from video_processor_shared.aws import get_s3_client
-from video_processor_shared.aws.s3_storage import S3StorageService
-from video_processor_shared.aws.sqs_service import SQSService
-
-# Cria clientes que automaticamente usam LocalStack se AWS_ENDPOINT_URL estiver setada
-s3 = S3StorageService()
-sqs = SQSService()
-
-# Upload de vídeo
-await s3.upload_video(file, "video.mp4", "user-123")
-
-# Enviar mensagem para fila
-await sqs.send_message({"job_id": "123", "video_key": "videos/user-123/..."})
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Erro: "Cannot connect to Docker daemon"
-```bash
-# Verifique se Docker Desktop está rodando
-open -a Docker
-```
-
-### Erro: "Port already in use"
-```bash
-# Encontrar processo na porta
-lsof -i :8000
-# Matar processo
-kill -9 <PID>
-```
-
-### Containers não iniciam
-```bash
-# Ver logs detalhados
-docker-compose logs --tail=100
-
-# Reconstruir imagens
-docker-compose build --no-cache
-docker-compose up -d
-```
-
-### Banco de dados vazio
-```bash
-# Recriar volumes
-docker-compose down -v
-docker-compose up -d
-```
-
----
-
-## 📊 Monitoramento
-
-### Prometheus Queries
-
-- **Requisições por segundo**: `rate(http_requests_total[5m])`
-- **Latência P95**: `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))`
-- **Jobs na fila**: `rabbitmq_queue_messages{queue="video_processing"}`
-
-### Grafana Dashboards
-
-Acesse http://localhost:3000 e importe os dashboards:
-- API Performance
-- Worker Metrics
-- Infrastructure Health
-
----
-
-## 🔄 Fluxo de Processamento
-
-```
-1. Usuário faz upload do vídeo
-   └─> POST /videos/upload
-
-2. Video Service salva metadados no PostgreSQL
-   └─> Faz upload do arquivo para MinIO
-   └─> Publica evento no RabbitMQ
-
-3. Celery Worker consome a mensagem
-   └─> Baixa vídeo do MinIO
-   └─> Extrai frames com FFmpeg
-   └─> Cria ZIP com frames
-   └─> Upload do ZIP para MinIO
-   └─> Atualiza status do job para COMPLETED
-
-4. Notification Service envia email
-   └─> Usuário recebe link para download
-```
-
----
-
-## 📝 Licença
-
-MIT License - veja [LICENSE](LICENSE) para detalhes.
