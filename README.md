@@ -7,9 +7,18 @@ Este é o repositório principal do ecossistema FIAP SOAT Video Processor. Ele o
 - Explicação do projeto
 - Objetivo
 - Como funciona
+- Repositórios relacionados
 - Integrações com outros repositórios
 - Como executar
 - Como testar
+
+## Repositórios relacionados
+- [fiap-soat-video-auth](https://github.com/SOAT-264/fiap-soat-video-auth)
+- [fiap-soat-video-service](https://github.com/SOAT-264/fiap-soat-video-service)
+- [fiap-soat-video-jobs](https://github.com/SOAT-264/fiap-soat-video-jobs)
+- [fiap-soat-video-notifications](https://github.com/SOAT-264/fiap-soat-video-notifications)
+- [fiap-soat-video-shared](https://github.com/SOAT-264/fiap-soat-video-shared)
+- [fiap-soat-video-obs](https://github.com/SOAT-264/fiap-soat-video-obs)
 
 ## Explicação do projeto
 O repositório centraliza o ambiente de desenvolvimento local com:
