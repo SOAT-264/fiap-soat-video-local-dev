@@ -12,29 +12,72 @@ function Run-Step {
     Write-Host "OK: $Name" -ForegroundColor Green
 }
 
+function Ensure-Repository {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Url,
+        [Parameter(Mandatory = $true)][string]$ValidationPath
+    )
+
+    $repoDir = Join-Path $Root $Name
+    $repoValidationPath = Join-Path $repoDir $ValidationPath
+
+    if (Test-Path $repoDir) {
+        if (-not (Test-Path $repoDir -PathType Container)) {
+            throw "Caminho esperado para o repositorio '$Name' nao e um diretorio: $repoDir"
+        }
+
+        if (-not (Test-Path $repoValidationPath)) {
+            throw "Diretorio existente para '$Name' sem estrutura esperada. Arquivo/pasta obrigatorio ausente: $repoValidationPath"
+        }
+
+        Write-Host "Repositorio encontrado: $Name" -ForegroundColor DarkGray
+        return $repoDir
+    }
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        throw "Git nao encontrado no PATH. Instale/configure o Git para clonar o repositorio ausente '$Name'."
+    }
+
+    Write-Host "Repositorio ausente: $Name. Clonando de $Url" -ForegroundColor Yellow
+    git clone $Url $repoDir
+
+    if (-not (Test-Path $repoValidationPath)) {
+        throw "Clone de '$Name' concluido, mas a estrutura esperada nao foi encontrada em: $repoValidationPath"
+    }
+
+    return $repoDir
+}
+
 $root = Split-Path -Parent $PSScriptRoot
 $localDevDir = $PSScriptRoot
-$authDir = Join-Path $root "fiap-soat-video-auth"
-$jobsDir = Join-Path $root "fiap-soat-video-jobs"
-$notificationsDir = Join-Path $root "fiap-soat-video-notifications"
-$videoDir = Join-Path $root "fiap-soat-video-service"
+$repositoryBaseUrl = "https://github.com/SOAT-264"
+$requiredRepositories = @(
+    @{ Name = "fiap-soat-video-auth"; Url = "$repositoryBaseUrl/fiap-soat-video-auth.git"; ValidationPath = "Dockerfile" },
+    @{ Name = "fiap-soat-video-jobs"; Url = "$repositoryBaseUrl/fiap-soat-video-jobs.git"; ValidationPath = "Dockerfile" },
+    @{ Name = "fiap-soat-video-notifications"; Url = "$repositoryBaseUrl/fiap-soat-video-notifications.git"; ValidationPath = "Dockerfile" },
+    @{ Name = "fiap-soat-video-service"; Url = "$repositoryBaseUrl/fiap-soat-video-service.git"; ValidationPath = "Dockerfile" },
+    @{ Name = "fiap-soat-video-shared"; Url = "$repositoryBaseUrl/fiap-soat-video-shared.git"; ValidationPath = "pyproject.toml" },
+    @{ Name = "fiap-soat-video-obs"; Url = "$repositoryBaseUrl/fiap-soat-video-obs.git"; ValidationPath = "docker-compose.yml" }
+)
 $initScript = Join-Path $localDevDir "init-scripts\localstack-init.ps1"
+$resolvedRepositories = @{}
 
-if (-not (Test-Path $authDir)) {
-    throw "Diretorio do auth nao encontrado: $authDir"
+Run-Step -Name "Validar repositorios locais necessarios" -Action {
+    foreach ($repository in $requiredRepositories) {
+        $resolvedRepositories[$repository.Name] = Ensure-Repository `
+            -Root $root `
+            -Name $repository.Name `
+            -Url $repository.Url `
+            -ValidationPath $repository.ValidationPath
+    }
 }
 
-if (-not (Test-Path $jobsDir)) {
-    throw "Diretorio do jobs nao encontrado: $jobsDir"
-}
-
-if (-not (Test-Path $notificationsDir)) {
-    throw "Diretorio do notifications nao encontrado: $notificationsDir"
-}
-
-if (-not (Test-Path $videoDir)) {
-    throw "Diretorio do video-service nao encontrado: $videoDir"
-}
+$authDir = [string]$resolvedRepositories["fiap-soat-video-auth"]
+$jobsDir = [string]$resolvedRepositories["fiap-soat-video-jobs"]
+$notificationsDir = [string]$resolvedRepositories["fiap-soat-video-notifications"]
+$videoDir = [string]$resolvedRepositories["fiap-soat-video-service"]
 
 if (-not (Test-Path $initScript)) {
     throw "Script de init do LocalStack nao encontrado: $initScript"
