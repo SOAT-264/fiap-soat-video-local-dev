@@ -56,6 +56,8 @@ auth, jobs (api + worker), notifications (api + worker) e video-service.
 ### Pré-requisitos
 - Docker Desktop com Kubernetes habilitado.
 - `kubectl` configurado para o cluster local.
+- KEDA instalado no cluster local (necessário para o HPA/autoscaling de workers).
+- Metrics Server instalado no cluster local (necessário para o HPA baseado em CPU/memória).
 - PowerShell 5.1+.
 
 ### Execução recomendada (ambiente completo)
