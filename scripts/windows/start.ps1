@@ -50,6 +50,15 @@ function Ensure-Repository {
     return $repoDir
 }
 
+function Ensure-AwsLocal {
+    if (Get-Command awslocal -ErrorAction SilentlyContinue) {
+        return
+    }
+
+    $installCommand = "pip install awscli-local"
+    throw "Comando 'awslocal' nao encontrado no PATH. Instale o AWS CLI Local antes de continuar. Exemplo: $installCommand"
+}
+
 $localDevDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $root = Split-Path -Parent $localDevDir
 $repositoryBaseUrl = "https://github.com/SOAT-264"
@@ -63,6 +72,10 @@ $requiredRepositories = @(
 )
 $initScript = Join-Path $PSScriptRoot "localstack-init.ps1"
 $resolvedRepositories = @{}
+
+Run-Step -Name "Validar instalacao do AWS CLI Local" -Action {
+    Ensure-AwsLocal
+}
 
 Run-Step -Name "Validar repositorios locais necessarios" -Action {
     foreach ($repository in $requiredRepositories) {
