@@ -1,6 +1,6 @@
 # Full local development environment for infra, gateway and observability
 # App services below are optional and disabled by default via profile `compose-apps`
-# Use start.ps1 to run auth/jobs/notifications/video on Kubernetes local-dev overlays
+# Use scripts/windows/start.ps1 to run auth/jobs/notifications/video on Kubernetes local-dev overlays
 
 include:
   - path: ../fiap-soat-video-obs/docker-compose.yml
