@@ -59,6 +59,177 @@ function Ensure-AwsLocal {
     throw "Comando 'awslocal' nao encontrado no PATH. Instale o AWS CLI Local antes de continuar. Exemplo: $installCommand"
 }
 
+function Test-KubectlResource {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    & kubectl @Arguments *> $null
+    return $LASTEXITCODE -eq 0
+}
+
+function Wait-ForDeploymentRollout {
+    param(
+        [Parameter(Mandatory = $true)][string]$Namespace,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [int]$TimeoutSeconds = 180
+    )
+
+    kubectl rollout status "deployment/$Name" -n $Namespace --timeout="$($TimeoutSeconds)s"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Falha ao aguardar rollout do deployment '$Name' no namespace '$Namespace'."
+    }
+}
+
+function Wait-ForNamespaceDeployments {
+    param(
+        [Parameter(Mandatory = $true)][string]$Namespace,
+        [int]$TimeoutSeconds = 180
+    )
+
+    $deployments = @(& kubectl get deployment -n $Namespace -o name 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Falha ao listar deployments no namespace '$Namespace'."
+    }
+
+    $deployments = @($deployments | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($deployments.Count -eq 0) {
+        throw "Nenhum deployment encontrado no namespace '$Namespace'."
+    }
+
+    foreach ($deployment in $deployments) {
+        kubectl rollout status $deployment -n $Namespace --timeout="$($TimeoutSeconds)s"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Falha ao aguardar rollout de '$deployment' no namespace '$Namespace'."
+        }
+    }
+}
+
+function Wait-ForMetricsApi {
+    param(
+        [int]$TimeoutSeconds = 60
+    )
+
+    $delaySeconds = 5
+    $attempts = [Math]::Max([int][Math]::Ceiling($TimeoutSeconds / $delaySeconds), 1)
+
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+        kubectl top nodes *> $null
+        if ($LASTEXITCODE -eq 0) {
+            return $true
+        }
+
+        if ($attempt -lt $attempts) {
+            Start-Sleep -Seconds $delaySeconds
+        }
+    }
+
+    return $false
+}
+
+function Enable-MetricsServerInsecureTls {
+    $deploymentJson = & kubectl get deployment metrics-server -n kube-system -o json
+    if ($LASTEXITCODE -ne 0) {
+        throw "Falha ao obter deployment 'metrics-server' no namespace 'kube-system'."
+    }
+
+    $deployment = $deploymentJson | ConvertFrom-Json
+    $container = @($deployment.spec.template.spec.containers | Where-Object { $_.name -eq "metrics-server" }) | Select-Object -First 1
+    if ($null -eq $container) {
+        throw "Container 'metrics-server' nao encontrado no deployment 'metrics-server'."
+    }
+
+    $currentArgs = @()
+    if ($null -ne $container.args) {
+        $currentArgs = @($container.args)
+    }
+
+    if ($currentArgs -contains "--kubelet-insecure-tls") {
+        return $false
+    }
+
+    $patchObject = @{
+        spec = @{
+            template = @{
+                spec = @{
+                    containers = @(
+                        @{
+                            name = "metrics-server"
+                            image = [string]$container.image
+                            args = @($currentArgs + "--kubelet-insecure-tls")
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    $patchFile = [System.IO.Path]::GetTempFileName()
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+    try {
+        [System.IO.File]::WriteAllText($patchFile, ($patchObject | ConvertTo-Json -Depth 20), $utf8NoBom)
+        kubectl patch deployment metrics-server -n kube-system --type strategic --patch-file $patchFile
+        if ($LASTEXITCODE -ne 0) {
+            throw "Falha ao aplicar patch com --kubelet-insecure-tls no Metrics Server."
+        }
+    }
+    finally {
+        Remove-Item $patchFile -ErrorAction SilentlyContinue
+    }
+
+    return $true
+}
+
+function Ensure-KedaInstalled {
+    $hasNamespace = Test-KubectlResource -Arguments @("get", "namespace", "keda")
+    $hasScaledObjectCrd = Test-KubectlResource -Arguments @("get", "crd", "scaledobjects.keda.sh")
+
+    if ($hasNamespace -and $hasScaledObjectCrd) {
+        Write-Host "KEDA encontrado no cluster." -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host "KEDA nao encontrado. Instalando manifesto oficial..." -ForegroundColor Yellow
+        kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.19.0/keda-2.19.0.yaml
+        if ($LASTEXITCODE -ne 0) {
+            throw "Falha ao instalar o KEDA."
+        }
+    }
+
+    Wait-ForNamespaceDeployments -Namespace "keda" -TimeoutSeconds 180
+}
+
+function Ensure-MetricsServerInstalled {
+    $hasDeployment = Test-KubectlResource -Arguments @("get", "deployment", "metrics-server", "-n", "kube-system")
+    $hasApiService = Test-KubectlResource -Arguments @("get", "apiservice", "v1beta1.metrics.k8s.io")
+
+    if ($hasDeployment -and $hasApiService) {
+        Write-Host "Metrics Server encontrado no cluster." -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host "Metrics Server nao encontrado. Instalando manifesto oficial..." -ForegroundColor Yellow
+        kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+        if ($LASTEXITCODE -ne 0) {
+            throw "Falha ao instalar o Metrics Server."
+        }
+    }
+
+    Wait-ForDeploymentRollout -Namespace "kube-system" -Name "metrics-server" -TimeoutSeconds 180
+
+    if (-not (Wait-ForMetricsApi -TimeoutSeconds 60)) {
+        Write-Host "Metrics API indisponivel. Aplicando patch local com --kubelet-insecure-tls..." -ForegroundColor Yellow
+        $patched = Enable-MetricsServerInsecureTls
+
+        if ($patched) {
+            Wait-ForDeploymentRollout -Namespace "kube-system" -Name "metrics-server" -TimeoutSeconds 180
+        }
+
+        if (-not (Wait-ForMetricsApi -TimeoutSeconds 120)) {
+            throw "Metrics API nao ficou disponivel apos instalar/configurar o Metrics Server."
+        }
+    }
+}
+
 $localDevDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $root = Split-Path -Parent $localDevDir
 $repositoryBaseUrl = "https://github.com/SOAT-264"
@@ -144,6 +315,11 @@ try {
         finally {
             Pop-Location
         }
+    }
+
+    Run-Step -Name "Garantir KEDA e Metrics Server no cluster" -Action {
+        Ensure-KedaInstalled
+        Ensure-MetricsServerInstalled
     }
 
     Run-Step -Name "Aplicar manifests k8s do auth" -Action {
