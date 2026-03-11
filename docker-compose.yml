@@ -20,7 +20,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres-auth-data:/var/lib/postgresql/data
-      - ./init-scripts/init-auth-db.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./scripts/sql/init-auth-db.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"]
       interval: 10s
@@ -41,7 +41,7 @@ services:
       - "5433:5432"
     volumes:
       - postgres-video-data:/var/lib/postgresql/data
-      - ./init-scripts/init-video-db.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./scripts/sql/init-video-db.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d video_db"]
       interval: 10s
@@ -62,7 +62,7 @@ services:
       - "5434:5432"
     volumes:
       - postgres-job-data:/var/lib/postgresql/data
-      - ./init-scripts/init-job-db.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./scripts/sql/init-job-db.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d job_db"]
       interval: 10s
@@ -83,7 +83,7 @@ services:
       - "5435:5432"
     volumes:
       - postgres-notification-data:/var/lib/postgresql/data
-      - ./init-scripts/init-notification-db.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./scripts/sql/init-notification-db.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d notification_db"]
       interval: 10s
@@ -122,7 +122,7 @@ services:
     volumes:
       - localstack-data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./init-scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+      - ./scripts/linux/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 10s
