@@ -64,7 +64,7 @@ auth, jobs (api + worker), notifications (api + worker) e video-service.
 ### Scripts one-shot
 - Recomenda-se o uso dos scripts one-shot para subir e derrubar o ambiente completo.
 - O fluxo principal atual está em `scripts/windows/start.ps1` e `scripts/windows/down.ps1`.
-- A pasta `scripts/linux` já existe para o porte da automação Linux nas próximas iterações.
+- Também é possível usar a versão Linux via `scripts/linux/start.sh` e `scripts/linux/down.sh`.
 
 ### Execução recomendada (ambiente completo)
 ```powershell
