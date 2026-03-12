@@ -6,6 +6,7 @@ Este é o repositório principal do ecossistema FIAP SOAT Video Processor. Ele o
 ## Sumário
 - Explicação do projeto
 - Objetivo
+- Diagrama de arquitetura
 - Como funciona
 - Repositórios relacionados
 - Integrações com outros repositórios
@@ -30,6 +31,9 @@ O repositório centraliza o ambiente de desenvolvimento local com:
 
 ## Objetivo
 Padronizar e simplificar o processo de subir, integrar e validar todos os serviços do sistema em um único fluxo de desenvolvimento local.
+
+## Diagrama de arquitetura
+![Diagrama de arquitetura](infra_diagram.png)
 
 ## Como funciona
 1. O `docker compose up -d` sobe a infraestrutura local:
