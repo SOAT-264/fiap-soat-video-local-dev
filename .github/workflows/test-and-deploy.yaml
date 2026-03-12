@@ -1,0 +1,139 @@
+name: Deploy Integrated Stack
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+
+jobs:
+  deploy:
+    if: github.event_name == 'push'
+    runs-on:
+      - self-hosted
+      - pc-wee
+      - X64
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout local-dev repository
+        uses: actions/checkout@v4
+        with:
+          path: fiap-soat-video-local-dev
+
+      - name: Checkout auth repository
+        uses: actions/checkout@v4
+        with:
+          repository: SOAT-264/fiap-soat-video-auth
+          path: fiap-soat-video-auth
+
+      - name: Checkout jobs repository
+        uses: actions/checkout@v4
+        with:
+          repository: SOAT-264/fiap-soat-video-jobs
+          path: fiap-soat-video-jobs
+
+      - name: Checkout notifications repository
+        uses: actions/checkout@v4
+        with:
+          repository: SOAT-264/fiap-soat-video-notifications
+          path: fiap-soat-video-notifications
+
+      - name: Checkout service repository
+        uses: actions/checkout@v4
+        with:
+          repository: SOAT-264/fiap-soat-video-service
+          path: fiap-soat-video-service
+
+      - name: Checkout shared repository
+        uses: actions/checkout@v4
+        with:
+          repository: SOAT-264/fiap-soat-video-shared
+          path: fiap-soat-video-shared
+
+      - name: Checkout observability repository
+        uses: actions/checkout@v4
+        with:
+          repository: SOAT-264/fiap-soat-video-obs
+          path: fiap-soat-video-obs
+
+      - name: Validate runner tooling
+        working-directory: ${{ github.workspace }}
+        run: |
+          $requiredCommands = @("docker", "git", "kubectl", "awslocal")
+
+          foreach ($command in $requiredCommands) {
+              if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
+                  throw "Command '$command' was not found on the runner."
+              }
+          }
+
+          docker version
+          docker compose version
+          kubectl version --client
+          kubectl cluster-info
+
+      - name: Deploy integrated stack via start script
+        working-directory: ${{ github.workspace }}/fiap-soat-video-local-dev/scripts/windows
+        run: .\start.ps1
+
+      - name: Verify integrated service health checks
+        run: |
+          $endpoints = @(
+            @{ Name = "auth"; Url = "http://localhost:32513/health" },
+            @{ Name = "jobs"; Url = "http://localhost:32514/health" },
+            @{ Name = "notifications"; Url = "http://localhost:32515/health" },
+            @{ Name = "video-service"; Url = "http://localhost:32516/health" }
+          )
+
+          foreach ($endpoint in $endpoints) {
+            $healthy = $false
+
+            for ($attempt = 1; $attempt -le 6; $attempt++) {
+              try {
+                $response = Invoke-WebRequest -Uri $endpoint.Url -UseBasicParsing -TimeoutSec 10
+
+                if ($response.StatusCode -eq 200) {
+                  $healthy = $true
+                  break
+                }
+              }
+              catch {
+              }
+
+              Start-Sleep -Seconds 10
+            }
+
+            if (-not $healthy) {
+              throw "Health check failed for '$($endpoint.Name)' at '$($endpoint.Url)'."
+            }
+          }
+
+      - name: Validate infrastructure connectivity
+        run: |
+          Write-Host "Validating Traefik dashboard access..."
+          $traefik = Invoke-WebRequest -Uri "http://localhost:8080" -UseBasicParsing -SkipHttpErrorCheck
+          if ($traefik.StatusCode -eq 200) {
+            Write-Host "Traefik dashboard OK"
+          }
+
+          Write-Host "Validating Prometheus access..."
+          $prometheus = Invoke-WebRequest -Uri "http://localhost:9090" -UseBasicParsing -SkipHttpErrorCheck
+          if ($prometheus.StatusCode -eq 200) {
+            Write-Host "Prometheus OK"
+          }
+
+          Write-Host "Validating Grafana access..."
+          $grafana = Invoke-WebRequest -Uri "http://localhost:3000" -UseBasicParsing -SkipHttpErrorCheck
+          if ($grafana.StatusCode -eq 200) {
+            Write-Host "Grafana OK"
+          }
