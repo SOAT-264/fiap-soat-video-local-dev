@@ -1,7 +1,11 @@
 # fiap-soat-video-local-dev
 
 ## Introdução
-Este é o repositório principal do ecossistema FIAP SOAT Video Processor. Ele orquestra a infraestrutura local, o roteamento, a observabilidade e o deploy dos microserviços para desenvolvimento integrado.
+Este é o repositório principal do ecossistema **FIAP SOAT Video Processor**, um projeto educacional desenvolvido para o curso de Pós-Graduação em Software Architecture da **FIAP**.
+
+O sistema realiza a **extração automática de frames de vídeos**: ao receber um vídeo, o processador extrai um frame por segundo e devolve ao usuário um arquivo `.zip` contendo todos os frames gerados. O processamento é assíncrono, orientado a eventos e escalável, utilizando filas de mensagens (SQS/SNS), autoscaling baseado em carga (KEDA) e notificações por e-mail ao término de cada job.
+
+Este repositório orquestra a infraestrutura local, o roteamento, a observabilidade e o deploy dos microserviços para desenvolvimento integrado.
 
 ## Sumário
 - Explicação do projeto
@@ -22,7 +26,22 @@ Este é o repositório principal do ecossistema FIAP SOAT Video Processor. Ele o
 - [fiap-soat-video-obs](https://github.com/SOAT-264/fiap-soat-video-obs)
 
 ## Explicação do projeto
-O repositório centraliza o ambiente de desenvolvimento local com:
+O **FIAP SOAT Video Processor** é uma aplicação distribuída de extração de frames de vídeo, construída como projeto educacional para a FIAP. O fluxo central consiste em:
+
+1. O usuário faz upload de um vídeo via API.
+2. O sistema extrai **1 frame por segundo** do vídeo enviado.
+3. Todos os frames são compactados em um arquivo `.zip` e armazenados no S3.
+4. O usuário recebe uma **notificação por e-mail** com o link para download do resultado.
+
+O projeto explora conceitos avançados de arquitetura de software:
+- **Mensageria e eventos**: comunicação entre serviços via SNS (pub/sub) e SQS (filas de trabalho), garantindo desacoplamento e resiliência.
+- **Autoscaling**: workers de processamento e notificação escalam automaticamente com base no número de mensagens na fila, utilizando KEDA (Kubernetes Event-Driven Autoscaling).
+- **Microserviços**: responsabilidades separadas em serviços independentes (auth, video, jobs, notifications).
+- **Observabilidade**: métricas, health checks e dashboards unificados via Prometheus, Grafana e Loki.
+- **Segurança**: autenticação centralizada com JWT, isolamento por namespace Kubernetes e segredos gerenciados via Kubernetes Secrets.
+- **Linguagem e arquitetura**: todos os microserviços são implementados em **Python**, seguindo os princípios da **arquitetura hexagonal** (Ports & Adapters), mantendo o domínio isolado de frameworks e infraestrutura.
+
+Este repositório centraliza o ambiente de desenvolvimento local com:
 - `docker-compose.yml` para infraestrutura base, gateway (Traefik) e stack de observabilidade.
 - Scripts one-shot de inicialização e encerramento em `scripts/windows/start.ps1` e `scripts/windows/down.ps1`.
 - Scripts organizados por plataforma em `scripts/windows` e `scripts/linux`, com SQL em `scripts/sql`.
