@@ -1,4 +1,4 @@
-# fiap-soat-video-local-dev
+# FIAP SOAT Video Processor
 
 ## Introdução
 Este é o repositório principal do ecossistema **FIAP SOAT Video Processor**, um projeto educacional desenvolvido para o curso de Pós-Graduação em Software Architecture da **FIAP**.
@@ -102,6 +102,7 @@ Subir o compose principal com serviços de app em containers (perfil opcional):
 ```powershell
 cd /fiap-soat-video-local-dev
 docker compose --profile compose-apps up -d
+.\scripts\windows\localstack-init.ps1
 ```
 
 ### Encerrar ambiente
@@ -138,3 +139,11 @@ curl http://notify.localhost/health
 - Prometheus: `http://prometheus.localhost`
 - Traefik Dashboard: `http://traefik.localhost`
 
+
+## Membros do projeto
+
+- Diego de Salles — RM362702
+- Lucas Felinto — RM363094
+- Maickel Alves — RM361616
+- Pedro Morgado — RM364209
+- Wesley Alves — RM364342
